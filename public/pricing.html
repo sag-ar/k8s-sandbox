@@ -74,12 +74,10 @@
     .message.success {
       background: #1b4332;
       color: #4ec9b0;
-      display: block;
     }
     .message.error {
       background: #4a1c1c;
       color: #f44747;
-      display: block;
     }
   </style>
 </head>
@@ -125,11 +123,15 @@
   </div>
 
   <script>
+    // Hide both messages by default
+    document.getElementById('success-message').style.display = 'none';
+    document.getElementById('cancel-message').style.display = 'none';
+
     // Check URL params for success/cancel
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('success') === 'true') {
       document.getElementById('success-message').style.display = 'block';
-      // Clear the URL parameter after showing message (no redirect)
+      // Clear the URL parameter after showing message
       window.history.replaceState({}, document.title, '/pricing.html');
     } else if (urlParams.get('canceled') === 'true') {
       document.getElementById('cancel-message').style.display = 'block';
@@ -139,10 +141,13 @@
     // Initialize Stripe
     const stripe = Stripe('pk_test_1TQ3MSADuzzJUodvBJ0gBPD5'); // Your Stripe publishable key
 
-    // Check if already Pro
-    const deviceId = localStorage.getItem('deviceId');
-    if (deviceId) {
-      fetch(`/api/subscription-status/${deviceId}`)
+    // Check if already Pro - comprehensive check
+    function checkProStatus() {
+      const deviceId = localStorage.getItem('deviceId');
+      if (!deviceId) return;
+
+      // First check the session endpoint (uses DB)
+      fetch(`/api/session/check/${deviceId}`)
         .then(res => res.json())
         .then(data => {
           if (data.isPro) {
@@ -153,9 +158,25 @@
               proCard.innerHTML = '<div class="current-plan">Current Plan (Pro)</div>';
             }
           }
+
+          // Also check Stripe subscription status for accuracy
+          return fetch(`/api/subscription-status/${deviceId}`);
+        })
+        .then(data => data && data.json())
+        .then(data => {
+          if (data && data.isPro) {
+            document.getElementById('subscribe-btn').style.display = 'none';
+            const proCard = document.querySelector('.pricing-card:last-child .current-plan') ||
+                         document.querySelector('.pricing-card:last-child');
+            if (proCard) {
+              proCard.innerHTML = '<div class="current-plan">Current Plan (Pro)</div>';
+            }
+          }
         })
         .catch(err => console.error('Failed to check subscription:', err));
     }
+
+    checkProStatus();
 
     // Handle subscription
     document.getElementById('subscribe-btn').addEventListener('click', () => {
