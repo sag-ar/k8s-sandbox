@@ -1,4 +1,4 @@
-# K8s Sandbox - Phase 1 Documentation
+# K8s Sandbox - Phase 1 & 2 Documentation
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -10,16 +10,20 @@
 7. [Database Schema](#database-schema)
 8. [Failure Points & Debugging](#failure-points--debugging)
 9. [Setup & Running](#setup--running)
+10. [Phase 2 Features](#phase-2-features)
 
 ---
 
 ## Overview
 
-K8s Sandbox Phase 1 is the MVP core that provides a browser-based Kubernetes learning terminal. It allows users to:
+K8s Sandbox Phase 1 & 2 provides a browser-based Kubernetes learning platform. It allows users to:
 - Access a web-based terminal without authentication
 - Learn kubectl commands in an isolated environment
 - Experience rate-limited free tier (1 session/day, 60 min/session)
 - Run in mock mode (no real K8s cluster needed for testing)
+- **Phase 2:** Automatic cleanup of expired sessions
+- **Phase 2:** Command filtering for free tier users
+- **Phase 2:** Landing page with value proposition
 
 **Tech Stack:** Node.js, Express, WebSocket, xterm.js, SQLite, Kubernetes (optional)
 
@@ -479,6 +483,88 @@ K8s Sandbox server running on http://localhost:3000
 
 ---
 
+## Phase 2 Features
+
+### 1. Automatic Session Cleanup (`cleanup.js`)
+
+The cleanup job runs every 5 minutes and removes expired sessions.
+
+**What it does:**
+1. Queries database for sessions where `expires_at < NOW()`
+2. Deletes the Kubernetes namespace for each expired session
+3. Marks the session as inactive in the database
+
+**Running the cleanup job:**
+```bash
+# Automatic (runs with server.js)
+npm start
+# Check logs for: [Cleanup] Checking for expired sessions...
+
+# Manual cleanup
+node cleanup.js
+```
+
+**Flow Diagram:**
+```mermaid
+flowchart TD
+    A[Cleanup Job - Every 5 min] --> B[Query DB: SELECT * FROM sessions WHERE expires_at < NOW()]
+    B --> C{Expired sessions?}
+    C -->|No| D[Log: No expired sessions]
+    C -->|Yes| E[For each expired session]
+    E --> F[Delete K8s namespace]
+    F --> G[Mark session as inactive in DB]
+    G --> H[Log: Session cleaned up]
+```
+
+---
+
+### 2. Command Filtering (`command-filter.js`)
+
+Free tier users can only run safe kubectl commands. Pro users have full access.
+
+**Free Tier Allowed Commands:**
+- Read-only: `get`, `describe`, `version`, `cluster-info`, `config view`, `api-resources`, `explain`, `auth can-i`
+- Safe operations: `run`, `expose`, `scale`, `autoscale`, `rollout status`, `rollout history`
+- Debugging: `logs`, `top`
+
+**Restricted Patterns (Free Tier):**
+- Delete operations: `delete namespace`, `delete --all`
+- RBAC modifications: `create role`, `apply rolebinding`, etc.
+- Node operations: `taint node`, `cordon node`, `drain node`
+- Dangerous flags: `--force --grace-period=0`
+
+**Implementation:**
+```javascript
+// In server.js WebSocket handler
+if (!isPro && message.data.trim().startsWith('kubectl')) {
+  const filterResult = commandFilter.filterCommand(message.data, false);
+  if (!filterResult.allowed) {
+    ptyProcess.write(`\x1b[31m${filterResult.reason}\x1b[0m\r\n`);
+    return; // Block the command
+  }
+}
+ptyProcess.write(message.data); // Allowed - send to terminal
+```
+
+---
+
+### 3. Landing Page (`landing.html`)
+
+A value proposition page served at `/` to attract new users.
+
+**Features:**
+- Hero section with CTA button
+- Feature cards (Zero Setup, Isolated & Safe, Real Terminal, Beginner Friendly)
+- How It Works section (3 steps)
+- Pricing preview section
+
+**Routes:**
+- `/` → Landing page (landing.html)
+- `/terminal` → Terminal page (index.html)
+- `/pricing.html` → Pricing page
+
+---
+
 ## Setup & Running
 
 ### Prerequisites
@@ -532,13 +618,21 @@ curl -X DELETE http://localhost:3000/api/session/{sessionId}
 
 ---
 
-## Phase 1 Limitations (To Be Fixed in Phase 2)
+## Phase 1 Limitations (Fixed in Phase 2)
 
-- [ ] No server-side session cleanup cron (sessions only cleanup on browser timer)
-- [ ] No command filtering (users can run ANY kubectl command)
-- [ ] Device ID can be bypassed by clearing localStorage
-- [ ] No guided tutorials
+- [x] No server-side session cleanup cron → **Fixed:** `cleanup.js` runs every 5 minutes
+- [x] No command filtering → **Fixed:** `command-filter.js` restricts free tier commands
+- [ ] Device ID can be bypassed by clearing localStorage (by design - "friendly" limits)
+- [ ] No guided tutorials (Phase 3)
 - [ ] No payment integration (Phase 3)
+
+## Phase 2 Limitations (To Be Fixed in Phase 3)
+
+- [ ] No payment integration (Stripe/Razorpay)
+- [ ] No guided tutorials
+- [ ] Command filtering can be bypassed (users can type `kubectl` commands directly in terminal)
+- [ ] Landing page is static (no dynamic content)
+- [ ] No analytics to track user behavior
 
 ---
 
