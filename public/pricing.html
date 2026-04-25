@@ -129,10 +129,11 @@
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('success') === 'true') {
       document.getElementById('success-message').style.display = 'block';
-      // Refresh page after 3 seconds to update status
-      setTimeout(() => window.location.href = '/pricing.html', 3000);
+      // Clear the URL parameter after showing message (no redirect)
+      window.history.replaceState({}, document.title, '/pricing.html');
     } else if (urlParams.get('canceled') === 'true') {
       document.getElementById('cancel-message').style.display = 'block';
+      window.history.replaceState({}, document.title, '/pricing.html');
     }
 
     // Initialize Stripe
