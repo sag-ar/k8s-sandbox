@@ -8,6 +8,8 @@ const db = require('./db');
 const k8sManager = require('./k8s-manager');
 const commandFilter = require('./command-filter');
 const { startCleanupJob } = require('./cleanup');
+const mockKubectl = require('./mock-kubectl');
+const MOCK_MODE = process.env.MOCK_MODE === 'true';
 
 const app = express();
 const server = http.createServer(app);
@@ -108,6 +110,58 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
+  let isPro = false;
+  db.getSession(sessionId).then(async (session) => {
+    if (session) {
+      const device = await db.getDevice(session.device_id);
+      isPro = device && device.is_pro === 1;
+    }
+  });
+
+  // In mock mode, don't spawn PTY - handle commands directly
+  if (MOCK_MODE) {
+    console.log(`[MOCK] WebSocket connected for session ${sessionId}`);
+
+    ws.on('message', (msg) => {
+      try {
+        const message = JSON.parse(msg);
+        if (message.type === 'input') {
+          const input = message.data;
+
+          // Filter commands for free tier
+          if (!isPro && input.trim().startsWith('kubectl')) {
+            const filterResult = commandFilter.filterCommand(input, false);
+            if (!filterResult.allowed) {
+              ws.send(JSON.stringify({ type: 'output', data: `\x1b[31m${filterResult.reason}\x1b[0m\r\n` }));
+              return;
+            }
+          }
+
+          // Handle kubectl commands with mock
+          if (input.trim().startsWith('kubectl ')) {
+            const output = mockKubectl.handleKubectlCommand(input);
+            ws.send(JSON.stringify({ type: 'output', data: output }));
+          } else if (input.trim() === 'clear') {
+            ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' }));
+          } else if (input.trim() !== '') {
+            ws.send(JSON.stringify({ type: 'output', data: `[Mock Mode] Command not supported: ${input.trim()}\r\n` }));
+          }
+        } else if (message.type === 'resize') {
+          // Ignore resize in mock mode
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    });
+
+    ws.on('close', () => {
+      console.log(`[MOCK] WebSocket disconnected for session ${sessionId}`);
+    });
+
+    return; // Don't spawn PTY in mock mode
+  }
+
+  // Real mode: spawn PTY
   const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash';
   const env = {
     ...process.env,
@@ -126,14 +180,6 @@ wss.on('connection', (ws, req) => {
   ptyProcess.onData((data) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'output', data }));
-    }
-  });
-
-  let isPro = false;
-  db.getSession(sessionId).then(async (session) => {
-    if (session) {
-      const device = await db.getDevice(session.device_id);
-      isPro = device && device.is_pro === 1;
     }
   });
 
