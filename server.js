@@ -18,10 +18,10 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-
-// Stripe webhook needs raw body for signature verification
+// Stripe webhook needs raw body for signature verification - must be before express.json()
 app.use('/api/webhook', express.raw({type: 'application/json'}));
+
+app.use(express.json());
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'landing.html'));
@@ -126,9 +126,10 @@ app.post('/api/create-checkout-session', async (req, res) => {
 });
 
 // Stripe Webhook
+// Stripe Webhook - uses raw body for signature verification
 app.post('/api/webhook', async (req, res) => {
   const signature = req.headers['stripe-signature'];
-  const body = req.rawBody || req.body;
+  const body = req.body; // express.raw() sets req.body as Buffer
 
   try {
     const result = await payment.handleWebhook(body, signature);
