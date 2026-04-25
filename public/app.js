@@ -1,4 +1,19 @@
 (function() {
+  function showError(msg) {
+    const errDiv = document.getElementById('error-message');
+    if (errDiv) {
+      errDiv.style.display = 'block';
+      errDiv.textContent = msg;
+    }
+    console.error(msg);
+  }
+
+  // Check if xterm is loaded
+  if (typeof Terminal === 'undefined') {
+    showError('Error: xterm.js failed to load. Check internet connection.');
+    return;
+  }
+
   const term = new Terminal({
     cols: 80,
     rows: 24,
@@ -9,14 +24,30 @@
     }
   });
 
-  const fitAddon = new FitAddon.FitAddon();
-  term.loadAddon(fitAddon);
+  // Check if FitAddon is loaded
+  if (typeof FitAddon === 'undefined') {
+    showError('Warning: xterm-addon-fit not loaded - terminal may not resize properly');
+  } else {
+    try {
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+
+      window.addEventListener('resize', () => {
+        try { fitAddon.fit(); } catch(e) {}
+      });
+    } catch(e) {
+      console.error('Failed to load FitAddon:', e);
+    }
+  }
 
   const terminalContainer = document.getElementById('terminal');
-  term.open(terminalContainer);
-  fitAddon.fit();
+  if (!terminalContainer) {
+    console.error('Terminal container not found');
+    return;
+  }
 
-  window.addEventListener('resize', () => fitAddon.fit());
+  term.open(terminalContainer);
+  try { term.fit(); } catch(e) {}
 
   const startBtn = document.getElementById('start-btn');
   const stopBtn = document.getElementById('stop-btn');
@@ -24,6 +55,11 @@
   const statusEl = document.getElementById('session-status');
   const userTypeEl = document.getElementById('user-type');
   const upgradeLink = document.getElementById('upgrade-link');
+
+  if (!startBtn || !stopBtn) {
+    showError('Error: Page elements not found. Try refreshing.');
+    return;
+  }
 
   let sessionId = null;
   let namespace = null;
@@ -37,8 +73,10 @@
   }
 
   function updateStatus(text, className) {
-    statusEl.textContent = text;
-    statusEl.className = className || '';
+    if (statusEl) {
+      statusEl.textContent = text;
+      statusEl.className = className || '';
+    }
   }
 
   function startTimer(expiresAt) {
@@ -50,7 +88,9 @@
       const remaining = Math.max(0, expiry - now);
       const minutes = Math.floor(remaining / 60000);
       const seconds = Math.floor((remaining % 60000) / 1000);
-      timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      if (timerEl) {
+        timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
 
       if (remaining <= 0) {
         clearInterval(timerInterval);
@@ -68,8 +108,8 @@
 
     ws.onopen = () => {
       updateStatus('Connected', 'connected');
-      startBtn.style.display = 'none';
-      stopBtn.style.display = 'inline';
+      if (startBtn) startBtn.style.display = 'none';
+      if (stopBtn) stopBtn.style.display = 'inline';
     };
 
     ws.onmessage = (event) => {
@@ -85,10 +125,10 @@
 
     ws.onclose = () => {
       updateStatus('Disconnected', 'disconnected');
-      startBtn.style.display = 'inline';
-      stopBtn.style.display = 'none';
+      if (startBtn) startBtn.style.display = 'inline';
+      if (stopBtn) stopBtn.style.display = 'none';
       clearInterval(timerInterval);
-      timerEl.textContent = '--:--';
+      if (timerEl) timerEl.textContent = '--:--';
     };
 
     term.onData((data) => {
@@ -106,6 +146,7 @@
 
   function startSession() {
     updateStatus('Checking...', '');
+    term.write('Checking session status...\r\n');
 
     fetch(`/api/session/check/${deviceId}`)
       .then(res => res.json())
@@ -126,6 +167,11 @@
         })
         .then(res => res.json())
         .then(session => {
+          if (session.error) {
+            term.write(`\x1b[31mError: ${session.error}\x1b[0m\r\n`);
+            updateStatus('Error', 'error');
+            return;
+          }
           sessionId = session.sessionId;
           namespace = session.namespace;
           term.write(`Session started. Namespace: ${namespace}\r\n`);
@@ -155,10 +201,11 @@
     .then(res => res.json())
     .then(data => {
       if (data.isPro) {
-        userTypeEl.textContent = 'Pro User';
-        upgradeLink.style.display = 'none';
+        if (userTypeEl) userTypeEl.textContent = 'Pro User';
+        if (upgradeLink) upgradeLink.style.display = 'none';
       }
-    });
+    })
+    .catch(err => console.error('Failed to check pro status:', err));
 
   startBtn.addEventListener('click', startSession);
   stopBtn.addEventListener('click', stopSession);
