@@ -47,72 +47,56 @@ function handleKubectlCommand(command) {
   }
 
   if (kubectlCmd.match(/^describe\s+pod/)) {
-    return 'Name:\tnginx\r\nNamespace:\tdefault\r\nStatus:\tRunning\r\nReady:\tTrue\r\nContainers:\r\n  nginx:\r\n    Image:\tnginx:latest\r\n    Port:\t80/TCP\r\n    Ready:\tTrue\r\n';
+    return 'Name:\tnginx\r\nNamespace:\tdefault\r\nStatus:\tRunning\r\nReady:\tTrue\r\n';
   }
 
   if (kubectlCmd.match(/^logs\s+/)) {
-    return '[mock] Pod logs would appear here\r\nLine 2 of logs...\r\nLine 3 of logs...\r\n';
+    return '[mock] Pod logs would appear here\r\n';
   }
 
   if (kubectlCmd.match(/^help/)) {
-    return 'kubectl controls the Kubernetes cluster manager.\r\n\r\nBasic Commands:\r\n  get         Display one or many resources\r\n  describe    Show details of a specific resource\r\n  create      Create a resource from a file or stdin\r\n';
+    return 'kubectl controls the Kubernetes cluster manager.\r\n';
   }
 
   // Default: command not mocked
-  return `[Mock Mode] Command '${kubectlCmd}' not mocked yet.\r\nTry: kubectl get pods, kubectl get nodes, kubectl version\r\n`;
+  return `[Mock Mode] Command '${kubectlCmd}' not mocked yet.\r\nTry: kubectl get pods\r\n`;
 }
 
-// Helper: pad string to exact width with spaces
-function pad(str, width) {
-  str = String(str);
-  if (str.length >= width) return str.substring(0, width);
-  return str + ' '.repeat(width - str.length);
-}
-
+// Simple output format - just use consistent spacing
 function mockGetPods(cmd) {
-  // Column widths: NAME=30, READY=8, STATUS=10, RESTARTS=10, AGE=6
-  let output = '';
-  output += pad('NAME', 30) + pad('READY', 8) + pad('STATUS', 10) + pad('RESTARTS', 10) + 'AGE\r\n';
-  output += pad('nginx', 30) + pad('1/1', 8) + pad('Running', 10) + pad('0', 10) + '5m\r\n';
-  output += pad('mock-pod-1', 30) + pad('1/1', 8) + pad('Running', 10) + pad('0', 10) + '3m\r\n';
-  output += pad('mock-pod-2', 30) + pad('1/1', 8) + pad('Pending', 10) + pad('0', 10) + '1m\r\n';
+  let output = 'NAME                 READY   STATUS    RESTARTS   AGE\r\n';
+  output += 'nginx                1/1     Running   0          5m\r\n';
+  output += 'mock-pod-1           1/1     Running   0          3m\r\n';
+  output += 'mock-pod-2           1/1     Pending   0          1m\r\n';
   return output;
 }
 
 function mockGetNodes() {
-  // Column widths: NAME=25, STATUS=10, ROLES=12, AGE=8, VERSION=10
-  let output = '';
-  output += pad('NAME', 25) + pad('STATUS', 10) + pad('ROLES', 12) + pad('AGE', 8) + 'VERSION\r\n';
-  output += pad('mock-node-1', 25) + pad('Ready', 10) + pad('<none>', 12) + pad('10m', 8) + 'v1.28.0\r\n';
-  output += pad('mock-node-2', 25) + pad('Ready', 10) + pad('<none>', 12) + pad('10m', 8) + 'v1.28.0\r\n';
+  let output = 'NAME               STATUS   ROLES    AGE       VERSION\r\n';
+  output += 'mock-node-1         Ready    <none>   10m       v1.28.0\r\n';
+  output += 'mock-node-2         Ready    <none>   10m       v1.28.0\r\n';
   return output;
 }
 
 function mockGetNamespaces() {
-  // Column widths: NAME=25, STATUS=10, AGE=6
-  let output = '';
-  output += pad('NAME', 25) + pad('STATUS', 10) + 'AGE\r\n';
-  output += pad('default', 25) + pad('Active', 10) + '20m\r\n';
-  output += pad('kube-system', 25) + pad('Active', 10) + '20m\r\n';
-  output += pad('kube-public', 25) + pad('Active', 10) + '20m\r\n';
-  output += pad('sandbox-mock', 25) + pad('Active', 10) + '5m\r\n';
+  let output = 'NAME              STATUS   AGE\r\n';
+  output += 'default           Active   20m\r\n';
+  output += 'kube-system       Active   20m\r\n';
+  output += 'kube-public       Active   20m\r\n';
+  output += 'sandbox-mock      Active   5m\r\n';
   return output;
 }
 
 function mockGetServices() {
-  // Column widths: NAME=20, TYPE=12, CLUSTER-IP=15, EXTERNAL-IP=13, PORT(S)=10, AGE=6
-  let output = '';
-  output += pad('NAME', 20) + pad('TYPE', 12) + pad('CLUSTER-IP', 15) + pad('EXTERNAL-IP', 13) + pad('PORT(S)', 10) + 'AGE\r\n';
-  output += pad('kubernetes', 20) + pad('ClusterIP', 12) + pad('10.96.0.1', 15) + pad('<none>', 13) + pad('443/TCP', 10) + '20m\r\n';
-  output += pad('nginx', 20) + pad('ClusterIP', 12) + pad('10.96.1.2', 15) + pad('<none>', 13) + pad('80/TCP', 10) + '5m\r\n';
+  let output = 'NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE\r\n';
+  output += 'kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP    20m\r\n';
+  output += 'nginx        ClusterIP   10.96.1.2      <none>        80/TCP     5m\r\n';
   return output;
 }
 
 function mockGetDeployments() {
-  // Column widths: NAME=20, READY=8, UP-TO-DATE=12, AVAILABLE=12, AGE=6
-  let output = '';
-  output += pad('NAME', 20) + pad('READY', 8) + pad('UP-TO-DATE', 12) + pad('AVAILABLE', 12) + 'AGE\r\n';
-  output += pad('nginx', 20) + pad('1/1', 8) + pad('1', 12) + pad('1', 12) + '5m\r\n';
+  let output = 'NAME   READY   UP-TO-DATE   AVAILABLE   AGE\r\n';
+  output += 'nginx   1/1     1            1           5m\r\n';
   return output;
 }
 

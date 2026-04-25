@@ -49,7 +49,13 @@
   }
 
   term.open(terminalContainer);
-  try { term.fit(); } catch(e) {}
+  try {
+    term.fit();
+    console.log('Terminal resized - cols:', term.cols, 'rows:', term.rows);
+  } catch(e) {
+    console.error('Fit failed:', e);
+  }
+  console.log('Terminal initialized - cols:', term.cols, 'rows:', term.rows, 'font:', term.fontFamily);
 
   const startBtn = document.getElementById('start-btn');
   const stopBtn = document.getElementById('stop-btn');
