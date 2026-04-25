@@ -207,15 +207,33 @@ window.appTerm = null; // Expose for debugging
     }
   }
 
-  fetch(`/api/session/check/${deviceId}`)
-    .then(res => res.json())
-    .then(data => {
-      if (data.isPro) {
-        if (userTypeEl) userTypeEl.textContent = 'Pro User';
-        if (upgradeLink) upgradeLink.style.display = 'none';
-      }
-    })
-    .catch(err => console.error('Failed to check pro status:', err));
+  // Check Pro status on load - check both endpoints
+  function checkProStatus() {
+    if (!deviceId) return;
+
+    // First check the session endpoint (uses DB)
+    fetch(`/api/session/check/${deviceId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.isPro) {
+          if (userTypeEl) userTypeEl.textContent = 'Pro User';
+          if (upgradeLink) upgradeLink.style.display = 'none';
+        }
+
+        // Also check Stripe subscription status for accuracy
+        return fetch(`/api/subscription-status/${deviceId}`);
+      })
+      .then(data => data && data.json())
+      .then(data => {
+        if (data && data.isPro) {
+          if (userTypeEl) userTypeEl.textContent = 'Pro User';
+          if (upgradeLink) upgradeLink.style.display = 'none';
+        }
+      })
+      .catch(err => console.error('Failed to check pro status:', err));
+  }
+
+  checkProStatus();
 
   startBtn.addEventListener('click', startSession);
   stopBtn.addEventListener('click', stopSession);
