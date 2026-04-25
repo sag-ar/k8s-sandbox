@@ -10,6 +10,7 @@ const commandFilter = require('./command-filter');
 const { startCleanupJob } = require('./cleanup');
 const mockKubectl = require('./mock-kubectl');
 const MOCK_MODE = process.env.MOCK_MODE === 'true';
+const payment = require('./payment');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,6 +19,9 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Stripe webhook needs raw body for signature verification
+app.use('/api/webhook', express.raw({type: 'application/json'}));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'landing.html'));
@@ -95,6 +99,67 @@ app.delete('/api/session/:sessionId', async (req, res) => {
       await db.deactivateSession(sessionId);
     }
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Payment Routes
+
+// Create Stripe Checkout Session
+app.post('/api/create-checkout-session', async (req, res) => {
+  try {
+    const { deviceId, successUrl, cancelUrl } = req.body;
+    if (!deviceId) {
+      return res.status(400).json({ error: 'Device ID required' });
+    }
+
+    const result = await payment.createCheckoutSession(deviceId, successUrl, cancelUrl);
+    if (!result.success) {
+      return res.status(500).json({ error: result.error });
+    }
+
+    res.json({ url: result.url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Stripe Webhook
+app.post('/api/webhook', async (req, res) => {
+  const signature = req.headers['stripe-signature'];
+  const body = req.rawBody || req.body;
+
+  try {
+    const result = await payment.handleWebhook(body, signature);
+    res.json(result);
+  } catch (err) {
+    console.error('[Webhook] Error:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Get subscription status
+app.get('/api/subscription-status/:deviceId', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const status = await payment.getSubscriptionStatus(deviceId);
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cancel subscription
+app.post('/api/cancel-subscription', async (req, res) => {
+  try {
+    const { subscriptionId } = req.body;
+    if (!subscriptionId) {
+      return res.status(400).json({ error: 'Subscription ID required' });
+    }
+
+    const result = await payment.cancelSubscription(subscriptionId);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
