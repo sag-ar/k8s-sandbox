@@ -6,6 +6,8 @@ const path = require('path');
 const pty = require('node-pty');
 const db = require('./db');
 const k8sManager = require('./k8s-manager');
+const commandFilter = require('./command-filter');
+const { startCleanupJob } = require('./cleanup');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,6 +17,14 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'landing.html'));
+});
+
+app.get('/terminal', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 app.get('/api/session/check/:deviceId', async (req, res) => {
   try {
@@ -118,10 +128,26 @@ wss.on('connection', (ws, req) => {
     }
   });
 
+  let isPro = false;
+  db.getSession(sessionId).then(async (session) => {
+    if (session) {
+      const device = await db.getDevice(session.device_id);
+      isPro = device && device.is_pro === 1;
+    }
+  });
+
   ws.on('message', (msg) => {
     try {
       const message = JSON.parse(msg);
       if (message.type === 'input') {
+        // Filter commands for free tier
+        if (!isPro && message.data.trim().startsWith('kubectl')) {
+          const filterResult = commandFilter.filterCommand(message.data, false);
+          if (!filterResult.allowed) {
+            ptyProcess.write(`\x1b[31m${filterResult.reason}\x1b[0m\r\n`);
+            return;
+          }
+        }
         ptyProcess.write(message.data);
       } else if (message.type === 'resize') {
         ptyProcess.resize(message.cols, message.rows);
@@ -152,6 +178,9 @@ wss.on('connection', (ws, req) => {
 });
 
 db.init().then(() => {
+  // Start cleanup job (runs every 5 minutes)
+  startCleanupJob(5);
+
   server.listen(PORT, () => {
     console.log(`K8s Sandbox server running on http://localhost:${PORT}`);
   });

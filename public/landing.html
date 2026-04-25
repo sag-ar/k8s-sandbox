@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>K8s Sandbox - Learn Kubernetes Free</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .landing-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .hero {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    .hero h1 {
+      font-size: 48px;
+      color: #569cd6;
+      margin-bottom: 20px;
+    }
+    .hero p {
+      font-size: 20px;
+      color: #cccccc;
+      max-width: 600px;
+      margin: 0 auto 30px;
+    }
+    .cta-button {
+      display: inline-block;
+      padding: 15px 40px;
+      background: #0e639c;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+      font-size: 18px;
+      transition: background 0.3s;
+    }
+    .cta-button:hover {
+      background: #1177bb;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 30px;
+      margin: 60px 0;
+    }
+    .feature-card {
+      background: #252526;
+      border: 1px solid #3e3e42;
+      border-radius: 8px;
+      padding: 30px;
+    }
+    .feature-card h3 {
+      color: #4ec9b0;
+      margin-bottom: 15px;
+    }
+    .feature-card p {
+      color: #cccccc;
+      line-height: 1.6;
+    }
+    .how-it-works {
+      margin: 60px 0;
+    }
+    .how-it-works h2 {
+      text-align: center;
+      color: #569cd6;
+      margin-bottom: 40px;
+    }
+    .steps {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 30px;
+    }
+    .step {
+      flex: 1;
+      min-width: 200px;
+      max-width: 250px;
+      text-align: center;
+    }
+    .step-number {
+      display: inline-block;
+      width: 50px;
+      height: 50px;
+      line-height: 50px;
+      background: #0e639c;
+      color: white;
+      border-radius: 50%;
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+    .step h4 {
+      color: #4ec9b0;
+      margin-bottom: 10px;
+    }
+    .step p {
+      color: #cccccc;
+      font-size: 14px;
+    }
+    .pricing-preview {
+      text-align: center;
+      margin: 60px 0;
+      padding: 40px;
+      background: #252526;
+      border-radius: 8px;
+    }
+    .pricing-preview h2 {
+      color: #569cd6;
+      margin-bottom: 20px;
+    }
+    .pricing-cards {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+    .price-card {
+      background: #1e1e1e;
+      border: 1px solid #3e3e42;
+      border-radius: 8px;
+      padding: 30px;
+      min-width: 250px;
+    }
+    .price-card h3 {
+      color: #4ec9b0;
+    }
+    .price-card .price {
+      font-size: 36px;
+      color: #569cd6;
+      margin: 20px 0;
+    }
+    .price-card ul {
+      list-style: none;
+      text-align: left;
+      margin: 20px 0;
+    }
+    .price-card li {
+      padding: 8px 0;
+      color: #cccccc;
+    }
+    .price-card li:before {
+      content: "✓ ";
+      color: #4ec9b0;
+    }
+    footer {
+      text-align: center;
+      padding: 30px;
+      border-top: 1px solid #3e3e42;
+      color: #858585;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1><a href="/" style="color:inherit;text-decoration:none;">K8s Sandbox</a></h1>
+    <div>
+      <a href="/" style="color:#569cd6; margin-right:15px;">Terminal</a>
+      <a href="/pricing.html" style="color:#569cd6;">Pricing</a>
+    </div>
+  </div>
+
+  <div class="landing-container">
+    <div class="hero">
+      <h1>Learn Kubernetes Without the Hassle</h1>
+      <p>Practice kubectl commands in a real Kubernetes environment right from your browser. No setup, no installation, just learn.</p>
+      <a href="/" class="cta-button">Start Learning Now</a>
+    </div>
+
+    <div class="features">
+      <div class="feature-card">
+        <h3>🚀 Zero Setup</h3>
+        <p>Skip the complex local setup. Get a ready-to-use Kubernetes environment in seconds, directly in your browser.</p>
+      </div>
+      <div class="feature-card">
+        <h3>🔒 Isolated & Safe</h3>
+        <p>Each session runs in its own isolated namespace. Experiment freely without affecting others.</p>
+      </div>
+      <div class="feature-card">
+        <h3>💻 Real Terminal</h3>
+        <p>Full xterm.js terminal with all kubectl commands. It's just like a real terminal, in your browser.</p>
+      </div>
+      <div class="feature-card">
+        <h3>📚 Beginner Friendly</h3>
+        <p>Start with one free session daily. Upgrade to Pro for unlimited access and guided tutorials.</p>
+      </div>
+    </div>
+
+    <div class="how-it-works">
+      <h2>How It Works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h4>Open Terminal</h4>
+          <p>Click "Start Session" and get instant access to a web-based terminal</p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h4>Run kubectl Commands</h4>
+          <p>Practice with real Kubernetes commands in a safe environment</p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h4>Learn & Grow</h4>
+          <p>Upgrade to Pro for unlimited sessions and advanced features</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="pricing-preview">
+      <h2>Simple, Transparent Pricing</h2>
+      <div class="pricing-cards">
+        <div class="price-card">
+          <h3>Free</h3>
+          <div class="price">$0</div>
+          <ul>
+            <li>1 session per day</li>
+            <li>60 minutes per session</li>
+            <li>Basic kubectl commands</li>
+          </ul>
+          <a href="/" class="cta-button">Get Started</a>
+        </div>
+        <div class="price-card">
+          <h3>Pro</h3>
+          <div class="price">$9<span style="font-size:16px;">/month</span></div>
+          <ul>
+            <li>Unlimited sessions</li>
+            <li>120 minutes per session</li>
+            <li>Full kubectl access</li>
+            <li>Guided tutorials</li>
+          </ul>
+          <a href="/pricing.html" class="cta-button">Upgrade Now</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>K8s Sandbox - A project by [Your Name] | Built with Node.js, Express, and Kubernetes</p>
+  </footer>
+</body>
+</html>
