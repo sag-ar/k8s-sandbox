@@ -1,3 +1,5 @@
+window.appTerm = null; // Expose for debugging
+
 (function() {
   function showError(msg) {
     const errDiv = document.getElementById('error-message');
@@ -14,7 +16,7 @@
     return;
   }
 
-  const term = new Terminal({
+  const term = window.appTerm = new Terminal({
     cols: 80,
     rows: 24,
     cursorBlink: true,
