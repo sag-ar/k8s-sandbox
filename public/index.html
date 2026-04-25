@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>K8s Sandbox - Learn Kubernetes</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/xterm@4.19.0/css/xterm.css">
+</head>
+<body>
+  <div id="header">
+    <h1>K8s Sandbox</h1>
+    <div id="session-info">
+      <span id="timer">--:--</span>
+      <span id="session-status">Not connected</span>
+      <button id="start-btn">Start Session</button>
+      <button id="stop-btn" style="display:none;">End Session</button>
+    </div>
+    <div id="user-info">
+      <span id="user-type">Free User</span>
+      <a href="/pricing.html" id="upgrade-link">Upgrade to Pro</a>
+    </div>
+  </div>
+
+  <div id="terminal-container">
+    <div id="terminal"></div>
+  </div>
+
+  <div id="instructions">
+    <h3>Quick Start</h3>
+    <ul>
+      <li><code>kubectl get pods</code> - List all pods</li>
+      <li><code>kubectl get nodes</code> - List cluster nodes</li>
+      <li><code>kubectl get namespaces</code> - List namespaces</li>
+      <li><code>kubectl run nginx --image=nginx</code> - Create an nginx pod</li>
+    </ul>
+  </div>
+
+  <script src="https://unpkg.com/xterm@4.19.0/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
