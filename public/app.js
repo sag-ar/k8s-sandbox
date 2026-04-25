@@ -18,6 +18,8 @@
     cols: 80,
     rows: 24,
     cursorBlink: true,
+    fontFamily: 'Consolas, "Courier New", monospace',
+    fontSize: 14,
     theme: {
       background: '#1e1e1e',
       foreground: '#d4d4d4'
