@@ -122,29 +122,68 @@ wss.on('connection', (ws, req) => {
   if (MOCK_MODE) {
     console.log(`[MOCK] WebSocket connected for session ${sessionId}`);
 
+    let commandBuffer = '';
+
     ws.on('message', (msg) => {
       try {
         const message = JSON.parse(msg);
         if (message.type === 'input') {
-          const input = message.data;
+          const data = message.data;
 
-          // Filter commands for free tier
-          if (!isPro && input.trim().startsWith('kubectl')) {
-            const filterResult = commandFilter.filterCommand(input, false);
-            if (!filterResult.allowed) {
-              ws.send(JSON.stringify({ type: 'output', data: `\x1b[31m${filterResult.reason}\x1b[0m\r\n` }));
-              return;
+          // Process each character - echo back and build command buffer
+          for (let i = 0; i < data.length; i++) {
+            const char = data[i];
+
+            if (char === '\r' || char === '\n') {
+              // Enter pressed - execute the command
+              ws.send(JSON.stringify({ type: 'output', data: '\r\n' }));
+
+              const input = commandBuffer.trim();
+              commandBuffer = '';
+
+              if (input === '') {
+                // Empty command, just show prompt
+                ws.send(JSON.stringify({ type: 'output', data: '$ ' }));
+                continue;
+              }
+
+              // Filter commands for free tier
+              if (!isPro && input.startsWith('kubectl')) {
+                const filterResult = commandFilter.filterCommand(input, false);
+                if (!filterResult.allowed) {
+                  ws.send(JSON.stringify({ type: 'output', data: `\x1b[31m${filterResult.reason}\x1b[0m\r\n$ ` }));
+                  continue;
+                }
+              }
+
+              // Handle kubectl commands with mock
+              if (input.startsWith('kubectl')) {
+                const output = mockKubectl.handleKubectlCommand(input);
+                ws.send(JSON.stringify({ type: 'output', data: output + '$ ' }));
+              } else if (input === 'clear') {
+                ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H$ ' }));
+              } else if (input === 'exit') {
+                ws.send(JSON.stringify({ type: 'output', data: 'Session ended.\r\n' }));
+                ws.close(1000, 'Session ended by user');
+                continue;
+              } else {
+                ws.send(JSON.stringify({ type: 'output', data: `[Mock Mode] Command not supported: ${input}\r\n$ ` }));
+              }
+            } else if (char === '') {
+              // Ctrl+C - cancel current command
+              commandBuffer = '';
+              ws.send(JSON.stringify({ type: 'output', data: '^C\r\n$ ' }));
+            } else if (char === '' || char === '\b') {
+              // Backspace
+              if (commandBuffer.length > 0) {
+                commandBuffer = commandBuffer.slice(0, -1);
+                ws.send(JSON.stringify({ type: 'output', data: '\b \b' }));
+              }
+            } else if (char >= ' ' || char === '\t') {
+              // Printable character or tab
+              commandBuffer += char;
+              ws.send(JSON.stringify({ type: 'output', data: char }));
             }
-          }
-
-          // Handle kubectl commands with mock
-          if (input.trim().startsWith('kubectl ')) {
-            const output = mockKubectl.handleKubectlCommand(input);
-            ws.send(JSON.stringify({ type: 'output', data: output }));
-          } else if (input.trim() === 'clear') {
-            ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' }));
-          } else if (input.trim() !== '') {
-            ws.send(JSON.stringify({ type: 'output', data: `[Mock Mode] Command not supported: ${input.trim()}\r\n` }));
           }
         } else if (message.type === 'resize') {
           // Ignore resize in mock mode
@@ -152,6 +191,11 @@ wss.on('connection', (ws, req) => {
       } catch (e) {
         // Ignore parse errors
       }
+    });
+
+    // Send initial prompt
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ type: 'output', data: 'K8s Sandbox [Mock Mode]\r\n$ ' }));
     });
 
     ws.on('close', () => {
