@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pricing - K8s Sandbox</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://js.stripe.com/v3/"></script>
   <style>
     .pricing-container {
       max-width: 800px;
@@ -12,6 +13,7 @@
       display: flex;
       gap: 30px;
       justify-content: center;
+      flex-wrap: wrap;
     }
     .pricing-card {
       background: #252526;
@@ -33,12 +35,14 @@
     .pricing-card ul {
       list-style: none;
       margin: 20px 0;
+      text-align: left;
     }
     .pricing-card li {
       padding: 8px 0;
       border-bottom: 1px solid #3e3e42;
+      color: #cccccc;
     }
-    .pricing-card button {
+    .pricing-card button, .pricing-card .button {
       width: 100%;
       padding: 12px;
       background: #0e639c;
@@ -47,8 +51,11 @@
       border-radius: 4px;
       cursor: pointer;
       font-size: 16px;
+      text-align: center;
+      display: block;
+      text-decoration: none;
     }
-    .pricing-card button:hover {
+    .pricing-card button:hover, .pricing-card .button:hover {
       background: #1177bb;
     }
     .current-plan {
@@ -56,13 +63,37 @@
       padding: 20px;
       color: #858585;
     }
+    .message {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 15px;
+      border-radius: 4px;
+      text-align: center;
+      display: none;
+    }
+    .message.success {
+      background: #1b4332;
+      color: #4ec9b0;
+      display: block;
+    }
+    .message.error {
+      background: #4a1c1c;
+      color: #f44747;
+      display: block;
+    }
   </style>
 </head>
 <body>
   <div id="header">
     <h1><a href="/" style="color:inherit;text-decoration:none;">K8s Sandbox</a></h1>
-    <a href="/" style="color:#569cd6;">Back to Terminal</a>
+    <div>
+      <a href="/terminal" style="color:#569cd6; margin-right:15px;">Terminal</a>
+      <a href="/" style="color:#569cd6;">Home</a>
+    </div>
   </div>
+
+  <div id="success-message" class="message success">🎉 Payment successful! You are now a Pro user.</div>
+  <div id="cancel-message" class="message error">Payment cancelled. You can try again anytime.</div>
 
   <div class="pricing-container">
     <div class="pricing-card">
@@ -89,14 +120,70 @@
         <li>Guided tutorials</li>
         <li>Priority support</li>
       </ul>
-      <button onclick="subscribe()">Upgrade to Pro</button>
+      <button id="subscribe-btn">Upgrade to Pro</button>
     </div>
   </div>
 
   <script>
-    function subscribe() {
-      alert('Payment integration coming soon! For now, contact admin to upgrade.');
+    // Check URL params for success/cancel
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('success') === 'true') {
+      document.getElementById('success-message').style.display = 'block';
+      // Refresh page after 3 seconds to update status
+      setTimeout(() => window.location.href = '/pricing.html', 3000);
+    } else if (urlParams.get('canceled') === 'true') {
+      document.getElementById('cancel-message').style.display = 'block';
     }
+
+    // Initialize Stripe
+    const stripe = Stripe('pk_test_YOUR_STRIPE_PUBLIC_KEY_HERE'); // Replace with your publishable key
+
+    // Check if already Pro
+    const deviceId = localStorage.getItem('deviceId');
+    if (deviceId) {
+      fetch(`/api/subscription-status/${deviceId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.isPro) {
+            document.getElementById('subscribe-btn').style.display = 'none';
+            const proCard = document.querySelector('.pricing-card:last-child .current-plan') ||
+                         document.querySelector('.pricing-card:last-child');
+            if (proCard) {
+              proCard.innerHTML = '<div class="current-plan">Current Plan (Pro)</div>';
+            }
+          }
+        })
+        .catch(err => console.error('Failed to check subscription:', err));
+    }
+
+    // Handle subscription
+    document.getElementById('subscribe-btn').addEventListener('click', () => {
+      if (!deviceId) {
+        alert('Please start a session first to generate a device ID.');
+        return;
+      }
+
+      fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId,
+          successUrl: window.location.origin + '/pricing.html?success=true',
+          cancelUrl: window.location.origin + '/pricing.html?canceled=true'
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.url) {
+          window.location.href = data.url; // Redirect to Stripe Checkout
+        } else {
+          alert('Failed to create checkout session: ' + (data.error || 'Unknown error'));
+        }
+      })
+      .catch(err => {
+        alert('Error: ' + err.message);
+      });
+    });
   </script>
 </body>
 </html>

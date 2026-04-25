@@ -2,6 +2,7 @@
 // Handles $9/month Pro subscription
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_test_YOUR_TEST_KEY_HERE');
+const db = require('./db');
 
 const PRICE_ID = process.env.STRIPE_PRICE_ID || 'price_YOUR_PRICE_ID_HERE';
 
@@ -53,6 +54,10 @@ async function handleWebhook(body, signature) {
         const session = event.data.object;
         const deviceId = session.client_reference_id || session.metadata.deviceId;
         console.log(`[Webhook] Checkout completed for device: ${deviceId}`);
+        if (deviceId) {
+          await db.setProStatus(deviceId, true);
+          console.log(`[Webhook] Set device ${deviceId} to Pro`);
+        }
         break;
       }
 
@@ -67,12 +72,24 @@ async function handleWebhook(body, signature) {
         const subscription = event.data.object;
         const customerId = subscription.customer;
         console.log(`[Webhook] Subscription cancelled for customer: ${customerId}`);
+        // Find device by customer ID (lookup in Stripe customer metadata or email)
+        try {
+          const customer = await stripe.customers.retrieve(customerId);
+          const deviceId = customer.email ? customer.email.replace('@k8s-sandbox.local', '') : null;
+          if (deviceId) {
+            await db.setProStatus(deviceId, false);
+            console.log(`[Webhook] Removed Pro status for device: ${deviceId}`);
+          }
+        } catch (err) {
+          console.error('[Webhook] Error finding device for customer:', err.message);
+        }
         break;
       }
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
         console.log(`[Webhook] Payment failed for subscription: ${invoice.subscription}`);
+        // Optionally notify user or mark payment as past_due
         break;
       }
 
