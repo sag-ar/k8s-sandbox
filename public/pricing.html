@@ -17,11 +17,33 @@
     }
     .pricing-card {
       background: #252526;
-      border: 1px solid #3e3e42;
+      border: 2px solid #3e3e42;
       border-radius: 8px;
       padding: 30px;
       flex: 1;
       max-width: 350px;
+      position: relative;
+    }
+    .pricing-card.selected {
+      border-color: #0e639c;
+      box-shadow: 0 0 20px rgba(14, 99, 156, 0.3);
+    }
+    .plan-badge {
+      display: none;
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0e639c;
+      color: white;
+      padding: 4px 16px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+    .pricing-card.selected .plan-badge {
+      display: block;
     }
     .pricing-card h2 {
       color: #569cd6;
@@ -94,7 +116,8 @@
   <div id="cancel-message" class="message error">Payment cancelled. You can try again anytime.</div>
 
   <div class="pricing-container">
-    <div class="pricing-card">
+    <div class="pricing-card" id="free-card">
+      <div class="plan-badge">Current Plan</div>
       <h2>Free</h2>
       <div class="price">$0</div>
       <p>Perfect for beginners</p>
@@ -104,10 +127,10 @@
         <li>Basic kubectl commands</li>
         <li>Community support</li>
       </ul>
-      <div class="current-plan">Current Plan</div>
     </div>
 
-    <div class="pricing-card">
+    <div class="pricing-card" id="pro-card">
+      <div class="plan-badge">Current Plan</div>
       <h2>Pro</h2>
       <div class="price">$9<span style="font-size:16px;">/month</span></div>
       <p>For serious learners</p>
@@ -158,30 +181,39 @@
         return null;
       });
 
-    // Check if already Pro - use consistent endpoint
-    function checkProStatus() {
-      if (!deviceId) return;
+    // Dynamically update which plan card is selected
+    function updatePlanSelection(isPro) {
+      const freeCard = document.getElementById('free-card');
+      const proCard = document.getElementById('pro-card');
+      const subscribeBtn = document.getElementById('subscribe-btn');
 
-      fetch(`/api/subscription-status/${deviceId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.isPro) {
-            hideSubscribeButton();
-          }
-        })
-        .catch(err => console.error('Failed to check subscription:', err));
+      if (isPro) {
+        freeCard.classList.remove('selected');
+        proCard.classList.add('selected');
+        if (subscribeBtn) subscribeBtn.style.display = 'none';
+      } else {
+        freeCard.classList.add('selected');
+        proCard.classList.remove('selected');
+        if (subscribeBtn) subscribeBtn.style.display = 'block';
+      }
     }
 
-    function hideSubscribeButton() {
-      const btn = document.getElementById('subscribe-btn');
-      if (btn) btn.style.display = 'none';
-      const proCard = document.querySelector('.pricing-card:last-child');
-      if (proCard) {
-        const existing = proCard.querySelector('.current-plan');
-        if (!existing) {
-          proCard.innerHTML += '<div class="current-plan" style="margin-top:15px;">Current Plan (Pro)</div>';
-        }
+    // Check if already Pro - use consistent endpoint
+    function checkProStatus() {
+      if (!deviceId) {
+        updatePlanSelection(false);
+        return;
       }
+
+      fetch(`/api/subscription-status/${deviceId}`)
+        .then(res => res.ok ? res.json() : Promise.reject('Failed'))
+        .then(data => {
+          updatePlanSelection(data && data.isPro);
+        })
+        .catch(err => {
+          console.error('Failed to check subscription:', err);
+          updatePlanSelection(false);
+        });
     }
 
     checkProStatus();
