@@ -83,10 +83,10 @@
 </head>
 <body>
   <div id="header">
-    <h1><a href="/" style="color:inherit;text-decoration:none;">K8s Sandbox</a></h1>
+    <h1><a href="/terminal" style="color:inherit;text-decoration:none;">K8s Sandbox</a></h1>
     <div>
       <a href="/terminal" style="color:#569cd6; margin-right:15px;">Terminal</a>
-      <a href="/" style="color:#569cd6;">Home</a>
+      <a href="/pricing.html" style="color:#569cd6;">Pricing</a>
     </div>
   </div>
 
@@ -141,26 +141,27 @@
     // Get or generate deviceId
     let deviceId = localStorage.getItem('deviceId');
     if (!deviceId) {
-      deviceId = 'dev-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      deviceId = 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
       localStorage.setItem('deviceId', deviceId);
       console.log('Generated new deviceId:', deviceId);
     }
 
-    // Initialize Stripe
-    const stripe = Stripe('pk_test_51TQ3MRADuzzJUodv6aGPNNgTyHYMohIHE5i8oEgqZCxmCcvwaCYPQlOUWUxjuXKviP8Wuvs5nfwxt8XSS9wcVxtL00gqLih9TQ');
+    // Initialize Stripe with key from server
+    const stripePromise = fetch('/api/config')
+      .then(res => res.json())
+      .then(config => {
+        return Stripe(config.stripePublicKey);
+      })
+      .catch(err => {
+        console.error('Failed to load Stripe config:', err);
+        return null;
+      });
 
-    // Check if already Pro - comprehensive check
+    // Check if already Pro - use consistent endpoint
     function checkProStatus() {
       if (!deviceId) return;
 
-      fetch(`/api/session/check/${deviceId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.isPro) {
-            hideSubscribeButton();
-          }
-          return fetch(`/api/subscription-status/${deviceId}`);
-        })
+      fetch(`/api/subscription-status/${deviceId}`)
         .then(res => res.json())
         .then(data => {
           if (data && data.isPro) {
@@ -185,7 +186,7 @@
     checkProStatus();
 
     // Handle subscription
-    document.getElementById('subscribe-btn').addEventListener('click', () => {
+    document.getElementById('subscribe-btn').addEventListener('click', async () => {
       if (!deviceId) {
         alert('Please start a session first to generate a device ID.');
         return;
@@ -194,6 +195,15 @@
       const btn = document.getElementById('subscribe-btn');
       btn.disabled = true;
       btn.textContent = 'Redirecting...';
+
+      // Wait for Stripe to be loaded
+      const stripe = await stripePromise;
+      if (!stripe) {
+        btn.disabled = false;
+        btn.textContent = 'Upgrade to Pro';
+        alert('Failed to load payment system. Please refresh and try again.');
+        return;
+      }
 
       fetch('/api/create-checkout-session', {
         method: 'POST',

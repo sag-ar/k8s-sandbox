@@ -1,25 +1,45 @@
 // Stripe Payment Integration for K8s Sandbox
 // Handles $9/month Pro subscription
 
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_test_YOUR_TEST_KEY_HERE');
+const config = require('./config');
+const stripe = require('stripe')(config.stripe.secretKey);
 const db = require('./db');
-
-const PRICE_ID = process.env.STRIPE_PRICE_ID || 'price_YOUR_PRICE_ID_HERE';
 
 // Create a Stripe Checkout Session
 async function createCheckoutSession(deviceId, successUrl, cancelUrl) {
   try {
+    // Find or create a Stripe customer with deviceId in metadata
+    const customers = await stripe.customers.list({
+      email: `${deviceId}@k8s-sandbox.local`,
+      limit: 1
+    });
+
+    let customerId;
+    if (customers.data.length > 0) {
+      customerId = customers.data[0].id;
+      await stripe.customers.update(customerId, {
+        metadata: { deviceId: deviceId }
+      });
+    } else {
+      const customer = await stripe.customers.create({
+        email: `${deviceId}@k8s-sandbox.local`,
+        metadata: { deviceId: deviceId }
+      });
+      customerId = customer.id;
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
+      customer: customerId,
       line_items: [
         {
-          price: PRICE_ID,
+          price: config.stripe.priceId,
           quantity: 1,
         },
       ],
-      success_url: successUrl || `${process.env.BASE_URL || 'http://localhost:3000'}/pricing.html?success=true`,
-      cancel_url: cancelUrl || `${process.env.BASE_URL || 'http://localhost:3000'}/pricing.html?canceled=true`,
+      success_url: successUrl || `${config.baseUrl}/pricing.html?success=true`,
+      cancel_url: cancelUrl || `${config.baseUrl}/pricing.html?canceled=true`,
       client_reference_id: deviceId,
       metadata: {
         deviceId: deviceId
@@ -42,10 +62,8 @@ async function createCheckoutSession(deviceId, successUrl, cancelUrl) {
 
 // Handle Stripe Webhook
 async function handleWebhook(body, signature) {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_YOUR_WEBHOOK_SECRET_HERE';
-
   try {
-    const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    const event = stripe.webhooks.constructEvent(body, signature, config.stripe.webhookSecret);
 
     console.log(`[Webhook] Received event: ${event.type}`);
 
@@ -72,13 +90,14 @@ async function handleWebhook(body, signature) {
         const subscription = event.data.object;
         const customerId = subscription.customer;
         console.log(`[Webhook] Subscription cancelled for customer: ${customerId}`);
-        // Find device by customer ID (lookup in Stripe customer metadata or email)
         try {
           const customer = await stripe.customers.retrieve(customerId);
-          const deviceId = customer.email ? customer.email.replace('@k8s-sandbox.local', '') : null;
+          const deviceId = customer.metadata && customer.metadata.deviceId;
           if (deviceId) {
             await db.setProStatus(deviceId, false);
             console.log(`[Webhook] Removed Pro status for device: ${deviceId}`);
+          } else {
+            console.error('[Webhook] No deviceId in customer metadata for customer:', customerId);
           }
         } catch (err) {
           console.error('[Webhook] Error finding device for customer:', err.message);

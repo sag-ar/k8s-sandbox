@@ -1,7 +1,16 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
-const dbPath = path.join(__dirname, 'sandbox.db');
+const config = require('./config');
+const dbPath = config.dbPath;
+
+// Ensure data directory exists
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
 const db = new sqlite3.Database(dbPath);
 
 function init() {
@@ -53,44 +62,35 @@ function getDevice(deviceId) {
 function createOrUpdateDevice(deviceId) {
   return new Promise((resolve, reject) => {
     const today = new Date().toISOString().split('T')[0];
-    db.get('SELECT * FROM devices WHERE device_id = ?', [deviceId], (err, row) => {
-      if (err) return reject(err);
-      if (!row) {
-        db.run('INSERT INTO devices (device_id, last_session_date, session_count_today) VALUES (?, ?, 0)',
-          [deviceId, today], (err) => {
-            if (err) reject(err);
-            else resolve({ device_id: deviceId, session_count_today: 0, is_pro: 0 });
-          });
-      } else {
-        if (row.last_session_date !== today) {
-          db.run('UPDATE devices SET last_session_date = ?, session_count_today = 0 WHERE device_id = ?',
-            [today, deviceId], (err) => {
-              if (err) reject(err);
-              else resolve({ ...row, session_count_today: 0, last_session_date: today });
+
+    // Use INSERT OR IGNORE to handle race condition
+    db.run('INSERT OR IGNORE INTO devices (device_id, last_session_date, session_count_today) VALUES (?, ?, 0)',
+      [deviceId, today], (err) => {
+        if (err) return reject(err);
+
+        // Then update if the session date is different
+        db.run('UPDATE devices SET last_session_date = ?, session_count_today = 0 WHERE device_id = ? AND last_session_date != ?',
+          [today, deviceId, today], (err) => {
+            if (err) return reject(err);
+
+            // Fetch and return the device
+            db.get('SELECT * FROM devices WHERE device_id = ?', [deviceId], (err, row) => {
+              if (err) return reject(err);
+              resolve(row);
             });
-        } else {
-          resolve(row);
-        }
-      }
-    });
+          });
+      });
   });
 }
 
-function canStartSession(deviceId) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const device = await createOrUpdateDevice(deviceId);
-      if (device.is_pro) {
-        resolve({ allowed: true, reason: null });
-      } else if (device.session_count_today >= 1) {
-        resolve({ allowed: false, reason: 'Daily session limit reached. Upgrade to Pro for unlimited sessions.' });
-      } else {
-        resolve({ allowed: true, reason: null });
-      }
-    } catch (err) {
-      reject(err);
-    }
-  });
+async function canStartSession(deviceId) {
+  const device = await createOrUpdateDevice(deviceId);
+  if (device.is_pro) {
+    return { allowed: true, reason: null };
+  } else if (device.session_count_today >= 1) {
+    return { allowed: false, reason: 'Daily session limit reached. Upgrade to Pro for unlimited sessions.' };
+  }
+  return { allowed: true, reason: null };
 }
 
 function incrementSessionCount(deviceId) {

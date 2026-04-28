@@ -1,27 +1,59 @@
-require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const os = require('os');
 const pty = require('node-pty');
+const rateLimit = require('express-rate-limit');
 const db = require('./db');
+const config = require('./config');
 const k8sManager = require('./k8s-manager');
 const commandFilter = require('./command-filter');
 const { startCleanupJob } = require('./cleanup');
 const mockKubectl = require('./mock-kubectl');
-const MOCK_MODE = process.env.MOCK_MODE === 'true';
 const payment = require('./payment');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const PORT = process.env.PORT || 3000;
+const PORT = config.port;
+const MOCK_MODE = config.mockMode;
 
 // Stripe webhook needs raw body for signature verification - must be before express.json()
 app.use('/api/webhook', express.raw({type: 'application/json'}));
 
 app.use(express.json());
+
+// Rate limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Too many requests, please try again later.' }
+});
+app.use('/api/', apiLimiter);
+
+// Stricter rate limit for session creation
+const sessionLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { error: 'Session creation limit reached, please try again later.' }
+});
+app.use('/api/session/start', sessionLimiter);
+
+// Serve config with Stripe public key
+app.get('/api/config', (req, res) => {
+  res.json({ stripePublicKey: config.stripe.publicKey });
+});
+
+// Device ID validation middleware
+function validateDeviceId(req, res, next) {
+  const deviceId = req.params.deviceId || (req.body && req.body.deviceId);
+  if (!deviceId || !/^dev-\d+-[a-z0-9]{9}$/.test(deviceId)) {
+    return res.status(400).json({ error: 'Invalid device ID' });
+  }
+  next();
+}
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'landing.html'));
@@ -33,9 +65,17 @@ app.get('/terminal', (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/session/check/:deviceId', async (req, res) => {
+// Apply deviceId validation to relevant routes
+app.get('/api/session/check/:deviceId', validateDeviceId, async (req, res) => {
   try {
     const { deviceId } = req.params;
+
+    // In mock mode, auto-set Pro status for easy testing
+    if (MOCK_MODE) {
+      await db.createOrUpdateDevice(deviceId);
+      await db.setProStatus(deviceId, true);
+    }
+
     const result = await db.canStartSession(deviceId);
     const device = await db.getDevice(deviceId);
     res.json({
@@ -47,11 +87,17 @@ app.get('/api/session/check/:deviceId', async (req, res) => {
   }
 });
 
-app.post('/api/session/start', async (req, res) => {
+app.post('/api/session/start', validateDeviceId, async (req, res) => {
   try {
     const { deviceId } = req.body;
     if (!deviceId) {
       return res.status(400).json({ error: 'Device ID required' });
+    }
+
+    // In mock mode, auto-set Pro status for easy testing
+    if (MOCK_MODE) {
+      await db.createOrUpdateDevice(deviceId);
+      await db.setProStatus(deviceId, true);
     }
 
     const check = await db.canStartSession(deviceId);
@@ -107,7 +153,7 @@ app.delete('/api/session/:sessionId', async (req, res) => {
 // Payment Routes
 
 // Create Stripe Checkout Session
-app.post('/api/create-checkout-session', async (req, res) => {
+app.post('/api/create-checkout-session', validateDeviceId, async (req, res) => {
   try {
     const { deviceId, successUrl, cancelUrl } = req.body;
     if (!deviceId) {
@@ -125,11 +171,10 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
-// Stripe Webhook
 // Stripe Webhook - uses raw body for signature verification
 app.post('/api/webhook', async (req, res) => {
   const signature = req.headers['stripe-signature'];
-  const body = req.body; // express.raw() sets req.body as Buffer
+  const body = req.body;
 
   try {
     const result = await payment.handleWebhook(body, signature);
@@ -140,11 +185,16 @@ app.post('/api/webhook', async (req, res) => {
   }
 });
 
-// Get subscription status
-app.get('/api/subscription-status/:deviceId', async (req, res) => {
+// Get subscription status (combined Pro status check)
+app.get('/api/subscription-status/:deviceId', validateDeviceId, async (req, res) => {
   try {
     const { deviceId } = req.params;
     const status = await payment.getSubscriptionStatus(deviceId);
+
+    // Also check DB for is_pro flag
+    const device = await db.getDevice(deviceId);
+    status.isPro = status.isPro || (device && device.is_pro === 1);
+
     res.json(status);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -166,10 +216,10 @@ app.post('/api/cancel-subscription', async (req, res) => {
   }
 });
 
-wss.on('connection', (ws, req) => {
-  const params = new URL(req.url, 'http://localhost').searchParams;
-  const sessionId = params.get('sessionId');
-  const namespace = params.get('namespace');
+wss.on('connection', async (ws, req) => {
+  const params = new URL(req.url, 'http://localhost');
+  const sessionId = params.searchParams.get('sessionId');
+  const namespace = params.searchParams.get('namespace');
 
   if (!sessionId || !namespace) {
     ws.close(1008, 'Missing sessionId or namespace');
@@ -177,12 +227,16 @@ wss.on('connection', (ws, req) => {
   }
 
   let isPro = false;
-  db.getSession(sessionId).then(async (session) => {
+  let session;
+  try {
+    session = await db.getSession(sessionId);
     if (session) {
       const device = await db.getDevice(session.device_id);
       isPro = device && device.is_pro === 1;
     }
-  });
+  } catch (err) {
+    console.error('[WebSocket] Error fetching session:', err.message);
+  }
 
   // In mock mode, don't spawn PTY - handle commands directly
   if (MOCK_MODE) {
@@ -215,7 +269,7 @@ wss.on('connection', (ws, req) => {
 
               // Filter commands for free tier
               if (!isPro && input.startsWith('kubectl')) {
-                const filterResult = commandFilter.filterCommand(input, false);
+                const filterResult = commandFilter.filterCommand(input, isPro);
                 if (!filterResult.allowed) {
                   ws.send(JSON.stringify({ type: 'output', data: `\x1b[31m${filterResult.reason}\x1b[0m\r\n$ ` }));
                   continue;
@@ -235,11 +289,11 @@ wss.on('connection', (ws, req) => {
               } else {
                 ws.send(JSON.stringify({ type: 'output', data: `[Mock Mode] Command not supported: ${input}\r\n$ ` }));
               }
-            } else if (char === '') {
+            } else if (char === '\x03') {
               // Ctrl+C - cancel current command
               commandBuffer = '';
               ws.send(JSON.stringify({ type: 'output', data: '^C\r\n$ ' }));
-            } else if (char === '' || char === '\b') {
+            } else if (char === '\x7f' || char === '\b') {
               // Backspace
               if (commandBuffer.length > 0) {
                 commandBuffer = commandBuffer.slice(0, -1);
@@ -260,36 +314,52 @@ wss.on('connection', (ws, req) => {
     });
 
     // Send initial prompt
-    ws.on('open', () => {
-      ws.send(JSON.stringify({ type: 'output', data: 'K8s Sandbox [Mock Mode]\r\n$ ' }));
-    });
+    ws.send(JSON.stringify({ type: 'output', data: 'K8s Sandbox [Mock Mode]\r\n$ ' }));
 
     ws.on('close', () => {
       console.log(`[MOCK] WebSocket disconnected for session ${sessionId}`);
     });
 
-    return; // Don't spawn PTY in mock mode
+    ws.on('error', (err) => {
+      console.error(`[MOCK] WebSocket error for session ${sessionId}:`, err.message);
+    });
+
+    return;
   }
 
   // Real mode: spawn PTY
   const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash';
   const env = {
     ...process.env,
-    KUBECONFIG: `/tmp/kubeconfig-${sessionId}`,
+    KUBECONFIG: path.join(os.tmpdir(), `kubeconfig-${sessionId}`),
     NAMESPACE: namespace
   };
 
-  const ptyProcess = pty.spawn(shell, [], {
-    name: 'xterm-color',
-    cols: 80,
-    rows: 24,
-    cwd: process.cwd(),
-    env: env
-  });
+  let ptyProcess;
+  try {
+    ptyProcess = pty.spawn(shell, [], {
+      name: 'xterm-color',
+      cols: 80,
+      rows: 24,
+      cwd: process.cwd(),
+      env: env
+    });
+  } catch (err) {
+    console.error('[PTY] Failed to spawn shell:', err.message);
+    ws.close(1011, 'Failed to start terminal');
+    return;
+  }
 
   ptyProcess.onData((data) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'output', data }));
+    }
+  });
+
+  ptyProcess.on('error', (err) => {
+    console.error('[PTY] Process error:', err.message);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.close(1011, 'Terminal error');
     }
   });
 
@@ -299,7 +369,7 @@ wss.on('connection', (ws, req) => {
       if (message.type === 'input') {
         // Filter commands for free tier
         if (!isPro && message.data.trim().startsWith('kubectl')) {
-          const filterResult = commandFilter.filterCommand(message.data, false);
+          const filterResult = commandFilter.filterCommand(message.data, isPro);
           if (!filterResult.allowed) {
             ptyProcess.write(`\x1b[31m${filterResult.reason}\x1b[0m\r\n`);
             return;
@@ -315,23 +385,32 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    ptyProcess.kill();
-  });
-
-  db.getSession(sessionId).then((session) => {
-    if (session && session.namespace === namespace) {
-      const expiresAt = new Date(session.expiresAt);
-      const now = new Date();
-      const timeout = expiresAt - now;
-
-      if (timeout > 0) {
-        setTimeout(() => {
-          ptyProcess.kill();
-          ws.close(1000, 'Session expired');
-        }, timeout);
-      }
+    if (ptyProcess) {
+      ptyProcess.kill();
     }
   });
+
+  ws.on('error', (err) => {
+    console.error(`[WebSocket] Error for session ${sessionId}:`, err.message);
+    if (ptyProcess) {
+      ptyProcess.kill();
+    }
+  });
+
+  if (session && session.namespace === namespace) {
+    const expiresAt = new Date(session.expiresAt);
+    const now = new Date();
+    const timeout = expiresAt - now;
+
+    if (timeout > 0) {
+      setTimeout(() => {
+        if (ptyProcess) ptyProcess.kill();
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close(1000, 'Session expired');
+        }
+      }, timeout);
+    }
+  }
 });
 
 db.init().then(() => {

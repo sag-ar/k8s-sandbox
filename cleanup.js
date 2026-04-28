@@ -34,8 +34,12 @@ function startCleanupJob(intervalMinutes = 5) {
   // Run immediately on startup
   cleanupExpiredSessions();
 
-  // Then run periodically
-  setInterval(cleanupExpiredSessions, intervalMinutes * 60 * 1000);
+  // Then run periodically with error protection
+  setInterval(() => {
+    cleanupExpiredSessions().catch((err) => {
+      console.error('[Cleanup] Unhandled error in cleanup job:', err.message);
+    });
+  }, intervalMinutes * 60 * 1000);
 }
 
 module.exports = {

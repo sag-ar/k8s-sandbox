@@ -78,7 +78,7 @@ window.appTerm = null; // Expose for debugging
   let deviceId = localStorage.getItem('deviceId');
 
   if (!deviceId) {
-    deviceId = 'dev-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    deviceId = 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
     localStorage.setItem('deviceId', deviceId);
   }
 
