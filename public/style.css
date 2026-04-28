@@ -27,6 +27,18 @@ body {
   color: #569cd6;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header-link {
+  color: #569cd6;
+  text-decoration: none;
+  font-size: 14px;
+}
+
 #session-info {
   display: flex;
   align-items: center;
