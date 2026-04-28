@@ -141,7 +141,8 @@
     // Get or generate deviceId
     let deviceId = localStorage.getItem('deviceId');
     if (!deviceId) {
-      deviceId = 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+      const suffix = Math.random().toString(36).substring(2).padEnd(9, '0').substring(0, 9);
+      deviceId = 'dev-' + Date.now() + '-' + suffix;
       localStorage.setItem('deviceId', deviceId);
       console.log('Generated new deviceId:', deviceId);
     }

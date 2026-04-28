@@ -78,7 +78,8 @@ window.appTerm = null; // Expose for debugging
   let deviceId = localStorage.getItem('deviceId');
 
   if (!deviceId) {
-    deviceId = 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+    const suffix = Math.random().toString(36).substring(2).padEnd(9, '0').substring(0, 9);
+    deviceId = 'dev-' + Date.now() + '-' + suffix;
     localStorage.setItem('deviceId', deviceId);
   }
 
@@ -213,7 +214,7 @@ window.appTerm = null; // Expose for debugging
 
     // First check the session endpoint (uses DB)
     fetch(`/api/session/check/${deviceId}`)
-      .then(res => res.json())
+      .then(res => res.ok ? res.json() : Promise.reject('Session check failed'))
       .then(data => {
         if (data.isPro) {
           if (userTypeEl) userTypeEl.textContent = 'Pro User';
@@ -223,7 +224,7 @@ window.appTerm = null; // Expose for debugging
         // Also check Stripe subscription status for accuracy
         return fetch(`/api/subscription-status/${deviceId}`);
       })
-      .then(data => data && data.json())
+      .then(res => res.ok ? res.json() : Promise.reject('Subscription status check failed'))
       .then(data => {
         if (data && data.isPro) {
           if (userTypeEl) userTypeEl.textContent = 'Pro User';

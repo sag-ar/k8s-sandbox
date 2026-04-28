@@ -29,6 +29,7 @@ app.use(express.json());
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
+  skip: (req) => req.path === '/api/webhook',
   message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/api/', apiLimiter);
@@ -52,6 +53,7 @@ function validateDeviceId(req, res, next) {
   if (!deviceId || !/^dev-\d+-[a-z0-9]{9}$/.test(deviceId)) {
     return res.status(400).json({ error: 'Invalid device ID' });
   }
+  req.deviceId = deviceId;
   next();
 }
 
@@ -68,7 +70,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Apply deviceId validation to relevant routes
 app.get('/api/session/check/:deviceId', validateDeviceId, async (req, res) => {
   try {
-    const { deviceId } = req.params;
+    const { deviceId } = req;
 
     // In mock mode, auto-set Pro status for easy testing
     if (MOCK_MODE) {
@@ -155,10 +157,8 @@ app.delete('/api/session/:sessionId', async (req, res) => {
 // Create Stripe Checkout Session
 app.post('/api/create-checkout-session', validateDeviceId, async (req, res) => {
   try {
-    const { deviceId, successUrl, cancelUrl } = req.body;
-    if (!deviceId) {
-      return res.status(400).json({ error: 'Device ID required' });
-    }
+    const { deviceId } = req;
+    const { successUrl, cancelUrl } = req.body;
 
     const result = await payment.createCheckoutSession(deviceId, successUrl, cancelUrl);
     if (!result.success) {
@@ -188,7 +188,7 @@ app.post('/api/webhook', async (req, res) => {
 // Get subscription status (combined Pro status check)
 app.get('/api/subscription-status/:deviceId', validateDeviceId, async (req, res) => {
   try {
-    const { deviceId } = req.params;
+    const { deviceId } = req;
     const status = await payment.getSubscriptionStatus(deviceId);
 
     // Also check DB for is_pro flag
@@ -205,8 +205,8 @@ app.get('/api/subscription-status/:deviceId', validateDeviceId, async (req, res)
 app.post('/api/cancel-subscription', async (req, res) => {
   try {
     const { subscriptionId } = req.body;
-    if (!subscriptionId) {
-      return res.status(400).json({ error: 'Subscription ID required' });
+    if (!subscriptionId || typeof subscriptionId !== 'string' || !/^sub_/.test(subscriptionId)) {
+      return res.status(400).json({ error: 'Valid subscription ID required' });
     }
 
     const result = await payment.cancelSubscription(subscriptionId);
